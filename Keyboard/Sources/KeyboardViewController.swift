@@ -523,7 +523,10 @@ final class KeyboardViewController: UIInputViewController {
                                             font: .systemFont(ofSize: 12), color: KB.secondaryText, lines: 0))
             }
         } else {
-            headerItems.append(KB.label(L("未配置判断层，直接生成（可在 App 里开启）", "Judge not configured; drafting directly (enable it in the app)"),
+            // 明确指出入口在 App 的哪个 tab、哪一栏——否则用户看到「可在 App 里开启」
+            // 根本不知道是「模型」tab 的第一栏「判断层」。
+            headerItems.append(KB.label(L("未配置判断层：直接生成候选（App → 模型 → 判断层，可开启意图/风险/排序）",
+                                          "Judge not configured: drafting directly (App → Models → Judge, to enable intent/risk/ranking)"),
                                         font: .systemFont(ofSize: 12), color: KB.secondaryText))
         }
         let quoted = KB.label("「" + (a.message.count > 40 ? String(a.message.prefix(40)) + "…" : a.message) + "」",

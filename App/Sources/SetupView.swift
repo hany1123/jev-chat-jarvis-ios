@@ -4,6 +4,8 @@ import Combine
 /// 开始页：键盘装没装、完全访问给没给、共享配置通不通，一眼看清。
 struct SetupView: View {
     @EnvironmentObject private var store: ConfigStore
+    /// 跳到「模型」tab 开启判断层。由 App 的 TabView 持有。
+    @Binding var selectedTab: AppTab
     @State private var kbStatus: KeyboardStatus?
     @State private var groupOK = false
 
@@ -64,11 +66,47 @@ struct SetupView: View {
                 ok: groupOK, detail: groupOK
                     ? jevLocalized(store.language, zh: "配置可以同步到键盘", en: "Configuration syncs to the keyboard")
                     : jevLocalized(store.language, zh: "共享容器不可用：请确认用 Xcode 把 App 和键盘扩展签在同一个 Team 下", en: "The shared container is unavailable. Sign both targets with the same Team."))
+
+            // 判断层是可选的（不配也能出候选），但键盘上那句「未配置判断层」只有这里能解释清楚。
+            // 给出直跳按钮，省得用户在四个 tab 里找「模型」。
+            judgeRow
         } header: {
             Text(jevLocalized(store.language, zh: "状态", en: "Status"))
         } footer: {
             Text(jevLocalized(store.language, zh: "键盘每次被唤起时会回写状态，这里每 2 秒刷新。", en: "The keyboard writes its status when opened. This view refreshes every 2 seconds."))
         }
+    }
+
+    /// 判断层配置状态 + 直跳「模型」页。
+    @ViewBuilder
+    private var judgeRow: some View {
+        let configured = !store.config.judgeKey.isEmpty
+            && !store.config.judgeBase.isEmpty
+            && !store.config.judgeModel.isEmpty
+        let generic = JevJudge.looksLikeGenericService(store.config.judgeBase)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: configured ? "checkmark.circle" : "questionmark.circle")
+                .foregroundStyle(configured ? Color.green : Color.orange)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(jevLocalized(store.language, zh: "判断层（意图 + 风险 + 排序）", en: "Judge (intent + risk + ranking)"))
+                    .font(.subheadline.weight(.medium))
+                Text(configured
+                     ? (generic
+                        ? jevLocalized(store.language, zh: "已配置（通用服务降级路径，概率为模型自报）", en: "Configured (generic-service fallback; self-reported probabilities)")
+                        : jevLocalized(store.language, zh: "已配置（Jev 网关，概率经过校准）", en: "Configured (Jev gateway, calibrated probabilities)"))
+                     : jevLocalized(store.language, zh: "未配置：键盘只出候选，不给意图、风险和排序。不配也能正常用。", en: "Not configured: the keyboard only suggests replies, without intent, risk, or ranking. It still works without it."))
+                    .font(.caption).foregroundStyle(.secondary)
+                Button {
+                    selectedTab = .models
+                } label: {
+                    Text(jevLocalized(store.language, zh: "去开启 →", en: "Enable it →"))
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private func row(icon: String, title: String, ok: Bool, detail: String) -> some View {

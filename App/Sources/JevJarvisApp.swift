@@ -31,18 +31,26 @@ final class ConfigStore: ObservableObject {
 struct JevJarvisApp: App {
     @StateObject private var store = ConfigStore()
     @Environment(\.scenePhase) private var scenePhase
+    /// 当前选中的 tab。判断层未配置时，「开始」页要能一键跳到「模型」——
+    /// 用 tab 切换而不是 NavigationLink，因为 ProvidersView 自带 NavigationStack，
+    /// 拿它当导航目标会套出双层导航栏。
+    @State private var selectedTab: AppTab = .setup
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                SetupView()
+            TabView(selection: $selectedTab) {
+                SetupView(selectedTab: $selectedTab)
                     .tabItem { Label(jevLocalized(store.language, zh: "开始", en: "Home"), systemImage: "keyboard") }
+                    .tag(AppTab.setup)
                 ProvidersView()
                     .tabItem { Label(jevLocalized(store.language, zh: "模型", en: "Models"), systemImage: "brain.head.profile") }
+                    .tag(AppTab.models)
                 TonesView()
                     .tabItem { Label(jevLocalized(store.language, zh: "话术", en: "Tones"), systemImage: "theatermasks") }
+                    .tag(AppTab.tones)
                 PlaygroundView()
                     .tabItem { Label(jevLocalized(store.language, zh: "试一试", en: "Try it"), systemImage: "flask") }
+                    .tag(AppTab.playground)
             }
             .environmentObject(store)
         }
@@ -50,4 +58,9 @@ struct JevJarvisApp: App {
             if phase == .active { store.reloadIfChanged() }
         }
     }
+}
+
+/// App 的四个 tab。判断层入口要跳到「模型」。
+enum AppTab: Hashable {
+    case setup, models, tones, playground
 }
