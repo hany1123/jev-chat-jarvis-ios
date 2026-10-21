@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  TrollStore 伪签名（fakesign）用的 entitlements。
+	  TrollStore 在安装时会用 ldid 重签并保留这里的 entitlement，
+	  所以 App Group 才能在主 App 与键盘扩展之间正常共享配置。
+
+	  注意：group ID 必须与 App/JevJarvis.entitlements、
+	  Keyboard/JevKeyboard.entitlements 完全一致，且主 App 与
+	  appex 的 entitlement 需各自独立签署（脚本已处理）。
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.jevchat.jarvis</string>
+	</array>
+</dict>
+</plist>

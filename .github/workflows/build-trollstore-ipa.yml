@@ -1,0 +1,90 @@
+name: Build TrollStore IPA
+
+# 用途：在 GitHub Actions 的 macOS runner 上编译 Jev Jarvis，
+#       用 ldid 伪签名，打包成 TrollStore 可直接安装的 IPA。
+#       产物在 Actions 页签 → Artifacts → JevJarvis-trollstore-ipa 下载。
+
+on:
+  workflow_dispatch:
+    inputs:
+      xcode_version:
+        description: "Xcode 版本（留空 = runner 默认最新）"
+        required: false
+        default: ""
+      configuration:
+        description: "编译配置"
+        required: false
+        default: "Release"
+        type: choice
+        options: [Release, Debug]
+  push:
+    tags:
+      - "ipa-*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build IPA
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ inputs.xcode_version != '' && inputs.xcode_version || 'latest-stable' }}
+
+      - name: Show environment
+        run: |
+          xcodebuild -version
+          sw_vers
+          echo "---- targets ----"
+          xcodebuild -project JevJarvis.xcodeproj -list
+
+      - name: Install ldid
+        run: brew install ldid && ldid 2>&1 | head -2 || true
+
+      - name: Build (unsigned)
+        run: |
+          set -euo pipefail
+          # DEVELOPMENT_TEAM 必须清空 —— 仓库里硬编码了作者的团队 ID (75LZ93U5CF)，
+          # 在没有该账号证书的 CI 上会导致签名失败。
+          # CODE_SIGNING_ALLOWED=NO 产出未签名二进制，后续由 ldid 伪签名。
+          xcodebuild \
+            -project JevJarvis.xcodeproj \
+            -scheme JevJarvis \
+            -configuration ${{ inputs.configuration || 'Release' }} \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            ENABLE_BITCODE=NO \
+            build
+
+      - name: Verify build output
+        run: |
+          set -euo pipefail
+          ls -la build/Build/Products/*/JevJarvis.app
+          echo "---- embedded extensions ----"
+          ls -la build/Build/Products/*/JevJarvis.app/PlugIns/ 2>/dev/null \
+            || echo "WARN: PlugIns 目录缺失，打包脚本会尝试兜底补入"
+
+      - name: Package fakesigned IPA
+        run: |
+          set -euo pipefail
+          bash scripts/build_trollstore_ipa.sh
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: JevJarvis-trollstore-ipa
+          path: out/JevJarvis-trollstore.ipa
+          if-no-files-found: error
+          retention-days: 30
