@@ -63,7 +63,16 @@ struct ProvidersView: View {
             Text(jevLocalized(store.language, zh: "生成层（候选回复，必配）", en: "Generation (required for suggestions)"))
         } footer: {
             Text(jevLocalized(store.language, zh: "必须填写你自己的 API Key；本项目不提供生成服务或中转。别用思考型模型（思考会占满额度导致 0 条候选）。地址带不带 /v1 都能拼对；端点需要额外字段关闭思考时，可在上面填写 JSON。", en: "Enter your own API key. This project does not provide a generation service or relay. Avoid reasoning models that spend the whole budget. URLs work with or without /v1; use the extra JSON field if your endpoint needs reasoning disabled."))
+            + "\n\n" + generationSectionFooter
         }
+    }
+
+    /// 生成层是必配项，也是通用大模型服务（DeepSeek / 智谱 / OpenRouter…）唯一该填的地方。
+    /// 判断层只认 Jev 网关，两者地址不通用——这里点明一下，免得两边填反。
+    private var generationSectionFooter: String {
+        jevLocalized(store.language,
+            zh: "DeepSeek、智谱、OpenRouter 这类通用服务请填在这里。判断层只支持 Jev 网关（TypeSafe / OpenRouter / Vercel），两者地址不能互换。",
+            en: "Put general services like DeepSeek, Zhipu, or OpenRouter here. The judge layer only accepts Jev gateways (TypeSafe / OpenRouter / Vercel); the two are not interchangeable.")
     }
 
     private var genStatusLine: String {
@@ -116,6 +125,20 @@ struct ProvidersView: View {
                 .font(.footnote)
 
             TestConnectionButton(kind: .judge)
+
+            // 判断层用的是 Jev 专用端点，填了通用大模型服务地址会稳定 404。
+            // 与其等用户点「测试连接」才看到状态码，不如在填地址时就说明。
+            if JevJudge.looksLikeGenericService(store.config.judgeBase) {
+                Label {
+                    Text(jevLocalized(store.language,
+                        zh: "判断层需要 Jev 网关（TypeSafe / OpenRouter / Vercel）。当前地址看起来是通用大模型服务，它没有 systemone 端点，会返回 404。DeepSeek 这类服务请填到下方「生成层」。",
+                        en: "The judge needs a Jev gateway (TypeSafe / OpenRouter / Vercel). This address looks like a general LLM service, which has no systemone endpoint and will return 404. Put DeepSeek-style services in the generation section below."))
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                }
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
 
             Text(jevLocalized(store.language, zh: "当前：\(store.config.judgeModel) · Key \(maskedKey(store.config.judgeKey))", en: "Current: \(store.config.judgeModel) · Key \(maskedKey(store.config.judgeKey))"))
                 .font(.caption2).foregroundStyle(.secondary)

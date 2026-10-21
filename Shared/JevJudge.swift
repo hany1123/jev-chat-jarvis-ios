@@ -84,6 +84,30 @@ final class JevJudge {
         return b + "/v1/systemone"
     }
 
+    /// 判断层用的是 TypeSafe Jev 的 systemone 接口（结构化决策），
+    /// 不是通用的 /chat/completions。填了通用大模型服务（DeepSeek、智谱、
+    /// OpenAI 兼容网关等）会稳定拿到 404——那个端点在这些服务上根本不存在。
+    /// 这时该提示用生成层，而不是让用户盯着一个看不懂的状态码。
+    ///
+    /// 判据：systemone / evaluate / decisions 这类动作段是 Jev 专用，
+    /// 出现在地址里说明就是 Jev 网关；否则一律按「通用服务」处理。
+    static func looksLikeGenericService(_ rawBase: String) -> Bool {
+        let b = rawBase.trimmingCharacters(in: .whitespaces).lowercased()
+        let actionSegs: Set<String> = ["systemone", "evaluate", "decisions"]
+        for seg in b.split(separator: "/").map(String.init) {
+            if actionSegs.contains(seg) { return false }
+        }
+        return true
+    }
+
+    /// 404 的成因说明。返回 nil 表示不是这个原因。
+    static func diagnose404(_ rawBase: String) -> String? {
+        guard looksLikeGenericService(rawBase) else { return nil }
+        return "判断层只支持 Jev 的 systemone 接口（api.typesafe.ai / OpenRouter / Vercel 网关）。"
+            + "你填的是通用大模型服务地址，它没有这个端点，所以返回 404。"
+            + "想用 DeepSeek / 智谱这类服务，请把 Key 填到下方「生成层」——那里才是 /chat/completions 形状。"
+    }
+
     // MARK: 判断（意图 + 风险，一次调用出全分布）
 
     func judge(message: String, context: String?) async throws -> JudgeResult {
@@ -161,16 +185,25 @@ final class JevJudge {
     // MARK: transport
 
     private func post(_ payload: [String: Any], stage: String) async throws -> [String: Any] {
-        try await JevHTTP.postJSON(
-            payload,
-            url: Self.requestURL(base),
-            headers: [
-                "Content-Type": "application/json",
-                "Authorization": "Bearer \(key)",
-            ],
-            budget: stage == "判断" ? 15 : 12,
-            stage: stage
-        )
+        do {
+            return try await JevHTTP.postJSON(
+                payload,
+                url: Self.requestURL(base),
+                headers: [
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer \(key)",
+                ],
+                budget: stage == "判断" ? 15 : 12,
+                stage: stage
+            )
+        } catch let e as JevError {
+            // 404 在这里几乎总是「端点不存在」而不是「资源不存在」，
+            // 而判断层用的是非标准端点，通用服务一律 404。给出可操作的说明。
+            if case .http(404, _) = e, let hint = Self.diagnose404(base) {
+                throw JevError.config(hint)
+            }
+            throw e
+        }
     }
 
     private func doubleValue(_ v: Any?) -> Double {
