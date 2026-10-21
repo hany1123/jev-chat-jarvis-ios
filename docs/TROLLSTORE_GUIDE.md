@@ -57,18 +57,28 @@ Mac 编译 → 得到 JevJarvis.app（未签名）
 
 2. **打开 Actions 页签**，左侧选 `Build TrollStore IPA`
 
-3. 点 **Run workflow**：
-   - `xcode_version` 留空 = 用 runner 默认最新稳定版
-   - `configuration` 选 `Release`
+3. 点 **Run workflow**，`configuration` 选 `Release`，点绿箭头
 
 4. 等约 8–15 分钟（macOS runner 排队 + 编译）
 
 5. 绿色勾 ✅ 后，在运行详情页底部 **Artifacts** 下载
-   `JevJarvis-trollstore-ipa`，解压得到 `JevJarvis-trollstore.ipa`
+   `JevJarvis-trollstore-ipa`，解压得到：
+   - `JevJarvis-trollstore.ipa` — 装这个
+   - `SHA256SUMS.txt` — 校验用
 
 6. 把 IPA 传到 iPhone（AirDrop / 微信文件传输助手 / iCloud 均可）
 
 7. iPhone 上用 **TrollStore** 打开该 IPA → 安装
+
+### 工作流已自动处理 Xcode 版本差异
+
+README 写「本工程用 Xcode 27 验证编译」，但 runner 镜像自带的是 Xcode 16.x。
+我已确认代码里**没有** iOS 17+/26 专属 API（Swift 5 模式、deployment target 16.0、
+无 `glassEffect`/`ContentUnavailableView`/`@Observable` 等），旧版 Xcode 同样能编过。
+
+所以工作流不固定单一版本，而是**遍历 runner 上所有已安装的 Xcode**，
+用 `xcode-select` 逐个切换，编译成功即停。全失败才报错。
+这样不管镜像带的是哪个版本都能出包。
 
 ### 为什么工作流里清空了 DEVELOPMENT_TEAM
 
@@ -80,6 +90,7 @@ CODE_SIGNING_ALLOWED=NO
 CODE_SIGNING_REQUIRED=NO
 CODE_SIGN_IDENTITY=""
 DEVELOPMENT_TEAM=""
+PROVISIONING_PROFILE_SPECIFIER=""
 ```
 
 编译产出未签名二进制，交给 ldid 伪签名处理。
@@ -125,7 +136,35 @@ bash scripts/build_trollstore_ipa.sh
 - 分别对 `JevJarvis` 和 `JevKeyboard` 两个二进制做 ldid 伪签名
 - 压成 IPA 并打印结构 + entitlement 自检
 
+> `xcodegen generate` 会用 `project.yml` 重新生成 `.xcodeproj`。
+> 仓库里已经带了生成好的 `.xcodeproj`，不改工程定义的话这步可以跳过。
+
 ---
+
+## 方案 C：命令行一条龙（本地 Mac）
+
+不想开 Xcode的话，用 `gh` 直接触发云端工作流并下载产物：
+
+```bash
+gh workflow run build-trollstore-ipa.yml -f configuration=Release
+gh run watch          # 等它跑完
+gh run download       # 产物落到当前目录
+```
+
+---
+
+## 方案 D：iOS 设备已越狱，直接装（不走 TrollStore）
+
+如果你的 16.3 设备已经越狱，其实**不需要 TrollStore**：
+
+1. 用方案 A/B 拿到 IPA
+2. 在 Mac 上用 `ldid` 伪签（`scripts/build_trollstore_ipa.sh` 已经做了）
+3. 通过 **AppSync** / **Sileo** / **Filza** 安装，或用
+   `ideviceinstaller` 配合已越狱设备安装
+
+这条路的好处：没有 TrollStore 的 CoreTrust 版本限制，也不怕
+「图标缓存重载后 App 消失」的问题。TrollStore 用户反而需要额外装
+Persistence Helper 来解决这一问题。
 
 ## 装好之后必做的配置
 
