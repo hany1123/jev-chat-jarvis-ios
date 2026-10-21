@@ -4,3 +4,7 @@ DerivedData/
 *.xcuserdatad/
 xcuserdata/
 .swiftpm/
+
+# 构建产物
+dist/
+out/
