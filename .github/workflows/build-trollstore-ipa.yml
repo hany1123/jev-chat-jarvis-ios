@@ -7,10 +7,6 @@ name: Build TrollStore IPA
 on:
   workflow_dispatch:
     inputs:
-      xcode_version:
-        description: "Xcode 版本（留空 = runner 默认最新）"
-        required: false
-        default: ""
       configuration:
         description: "编译配置"
         required: false
@@ -33,40 +29,64 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: ${{ inputs.xcode_version != '' && inputs.xcode_version || 'latest-stable' }}
-
       - name: Show environment
         run: |
+          echo "---- available Xcodes ----"
+          ls -1 /Applications | grep -i '^Xcode' || true
           xcodebuild -version
           sw_vers
-          echo "---- targets ----"
-          xcodebuild -project JevJarvis.xcodeproj -list
 
       - name: Install ldid
-        run: brew install ldid && ldid 2>&1 | head -2 || true
+        run: |
+          brew install ldid
+          ldid 2>&1 | head -2 || true
 
       - name: Build (unsigned)
         run: |
-          set -euo pipefail
-          # DEVELOPMENT_TEAM 必须清空 —— 仓库里硬编码了作者的团队 ID (75LZ93U5CF)，
-          # 在没有该账号证书的 CI 上会导致签名失败。
-          # CODE_SIGNING_ALLOWED=NO 产出未签名二进制，后续由 ldid 伪签名。
-          xcodebuild \
-            -project JevJarvis.xcodeproj \
-            -scheme JevJarvis \
-            -configuration ${{ inputs.configuration || 'Release' }} \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" \
-            ENABLE_BITCODE=NO \
-            build
+          set -uo pipefail
+
+          # 依次尝试可用的 Xcode。README 说本工程用 Xcode 27 验证编译，
+          # 但代码里没有 iOS 17+/26 专属 API（Swift 5 模式、deployment target 16.0），
+          # 所以较旧的 Xcode 16/15 也能编过。逐个回退保证成功率。
+          XCODE_LIST=$(ls -1d /Applications/Xcode*.app 2>/dev/null | sort -V)
+          [ -z "$XCODE_LIST" ] && XCODE_LIST="/Applications/Xcode.app"
+
+          BUILD_OK=0
+          for XC in $XCODE_LIST; do
+            echo "===================================================================="
+            echo ">>> Trying Xcode: $XC"
+            echo "===================================================================="
+            sudo xcode-select -s "$XC"
+            xcodebuild -version
+
+            rm -rf build
+
+            # DEVELOPMENT_TEAM 必须清空 —— 仓库里硬编码了作者的团队 ID (75LZ93U5CF)，
+            # 在没有该账号证书的 CI 上会导致签名失败。
+            # CODE_SIGNING_ALLOWED=NO 产出未签名二进制，后续由 ldid 伪签名。
+            xcodebuild \
+              -project JevJarvis.xcodeproj \
+              -scheme JevJarvis \
+              -configuration "${{ inputs.configuration || 'Release' }}" \
+              -sdk iphoneos \
+              -destination 'generic/platform=iOS' \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              DEVELOPMENT_TEAM="" \
+              PROVISIONING_PROFILE_SPECIFIER="" \
+              ENABLE_BITCODE=NO \
+              build && { BUILD_OK=1; break; }
+
+            echo "!!! Build failed with $XC, trying next Xcode..."
+          done
+
+          if [ "$BUILD_OK" -ne 1 ]; then
+            echo "::error::All Xcode versions failed to build"
+            exit 1
+          fi
+          echo "Build succeeded."
 
       - name: Verify build output
         run: |
@@ -81,10 +101,16 @@ jobs:
           set -euo pipefail
           bash scripts/build_trollstore_ipa.sh
 
+      - name: Checksum
+        run: |
+          shasum -a 256 out/JevJarvis-trollstore.ipa | tee out/SHA256SUMS.txt
+
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: JevJarvis-trollstore-ipa
-          path: out/JevJarvis-trollstore.ipa
+          path: |
+            out/JevJarvis-trollstore.ipa
+            out/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
