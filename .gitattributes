@@ -1,0 +1,9 @@
+# 打包脚本必须在 macOS/Linux 上以 LF 执行，CRLF 会导致 bash 报错
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.entitlements text eol=lf
+*.plist text eol=lf
+*.md text eol=lf
+*.swift text eol=lf
+*.pbxproj text eol=lf
