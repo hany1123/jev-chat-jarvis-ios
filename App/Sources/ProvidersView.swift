@@ -131,15 +131,16 @@ struct ProvidersView: View {
 
             TestConnectionButton(kind: .judge)
 
-            // 判断层用的是 Jev 专用端点，填了通用大模型服务地址会稳定 404。
-            // 与其等用户点「测试连接」才看到状态码，不如在填地址时就说明。
+            // 判断层现在有两条路径：Jev 网关走 systemone（概率已校准），
+            // 通用模型服务走 /chat/completions + 结构化 prompt（概率是模型自报）。
+            // 填了通用服务时说明走的是降级路径，概率精度会低一些。
             if JevJudge.looksLikeGenericService(store.config.judgeBase) {
                 Label {
                     Text(jevLocalized(store.language,
-                        zh: "判断层需要 Jev 网关（TypeSafe / OpenRouter / Vercel）。当前地址看起来是通用大模型服务，它没有 systemone 端点，会返回 404。DeepSeek 这类服务请填到下方「生成层」。",
-                        en: "The judge needs a Jev gateway (TypeSafe / OpenRouter / Vercel). This address looks like a general LLM service, which has no systemone endpoint and will return 404. Put DeepSeek-style services in the generation section below."))
+                        zh: "当前走的是通用服务降级路径：用 /chat/completions 让模型自己给出意图与风险分布。能用，但概率是模型自报的、不如 Jev 网关校准得准。想用校准过的概率，换成 TypeSafe / OpenRouter / Vercel 网关。",
+                        en: "Using the generic-service fallback: the model reports intent and risk itself over /chat/completions. It works, but the probabilities are self-reported and less calibrated than a Jev gateway. For calibrated probabilities, use TypeSafe / OpenRouter / Vercel."))
                 } icon: {
-                    Image(systemName: "exclamationmark.triangle")
+                    Image(systemName: "info.circle")
                 }
                 .font(.caption)
                 .foregroundStyle(.orange)
@@ -150,7 +151,7 @@ struct ProvidersView: View {
         } header: {
             Text(jevLocalized(store.language, zh: "判断层（Jev · 意图 + 风险 + 排序）", en: "Judge (Jev · intent + risk + ranking)"))
         } footer: {
-            Text(jevLocalized(store.language, zh: "核心判断引擎：一次调用出 8 类意图概率和 0–9 风险分布，并给候选排序。没填 key 时键盘退化为「盲起草」（只出候选）。网关地址填到动作段或带 /v1 都能拼对；key 与生成层可以不是同一家。", en: "The judge returns probabilities for 8 intents, a 0–9 risk score, and candidate ranking. Without a key, the keyboard falls back to drafting only. The judge and generation providers can differ."))
+            Text(jevLocalized(store.language, zh: "核心判断引擎：一次调用出 8 类意图概率和 0–9 风险分布，并给候选排序。没填 key 时键盘退化为「盲起草」（只出候选）。TypeSafe / OpenRouter / Vercel 走 Jev 原生接口，概率经过校准；DeepSeek、智谱这类通用服务会自动降级到 /chat/completions 形状，能用但概率是模型自报的。key 与生成层可以不是同一家。", en: "The judge returns probabilities for 8 intents, a 0–9 risk score, and candidate ranking. Without a key, the keyboard falls back to drafting only. TypeSafe / OpenRouter / Vercel use Jev's native endpoint with calibrated probabilities; general services such as DeepSeek or Zhipu fall back to the /chat/completions shape, which works but reports self-scored probabilities. The judge and generation providers can differ."))
         }
     }
 }
@@ -248,9 +249,14 @@ private struct TestConnectionButton: View {
                     guard judge.isConfigured else { throw JevError.missingKey(keyName) }
                     let jr = try await judge.judge(message: "这个需求你今天跟一下", context: nil)
                     let intentText = localizedIntent(jr.intent, language: store.language)
+                    // 通用服务走的是降级路径，概率是模型自报的——说清楚，免得被当成校准过的分数
+                    let viaFallback = JevJudge.looksLikeGenericService(cfg.judgeBase)
+                    let suffix = viaFallback
+                        ? (store.language == .english ? " (fallback: self-reported)" : "（降级路径：概率为模型自报）")
+                        : ""
                     result = store.language == .english
-                        ? String(format: "✅ Success: intent \"%@\" (%.0f%%), risk %.1f/9", intentText, jr.confidence * 100, jr.risk)
-                        : String(format: "✅ 成功：意图「%@」（%.0f%%），风险 %.1f/9", jr.intent, jr.confidence * 100, jr.risk)
+                        ? String(format: "✅ Success: intent \"%@\" (%.0f%%), risk %.1f/9%@", intentText, jr.confidence * 100, jr.risk, suffix)
+                        : String(format: "✅ 成功：意图「%@」（%.0f%%），风险 %.1f/9%@", jr.intent, jr.confidence * 100, jr.risk, suffix)
                 }
             } catch {
                 result = "❌ \(error.localizedDescription)"
