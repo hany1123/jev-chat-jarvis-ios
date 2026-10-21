@@ -33,7 +33,8 @@ if gh repo view "$FORK_FULL" >/dev/null 2>&1; then
   log "Fork 已存在: $FORK_FULL"
 else
   log "创建 Fork: $UPSTREAM -> $FORK_FULL"
-  gh repo fork "$UPSTREAM" --clone=false --remote=false
+  # --clone=false 只建仓库不克隆；--remote 与仓库参数互斥，故不传
+  gh repo fork "$UPSTREAM" --clone=false
   # 等 fork 落库
   for i in $(seq 1 10); do
     gh repo view "$FORK_FULL" >/dev/null 2>&1 && break
