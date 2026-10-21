@@ -97,11 +97,21 @@ done
 [ -n "$RUN_ID" ] || die "超时：未取到运行 ID"
 
 log "下载产物"
+rm -rf "$ROOT/dist"
 mkdir -p "$ROOT/dist"
 gh run download "$RUN_ID" --repo "$FORK_FULL" --dir "$ROOT/dist" || die "下载失败"
 
-IPA="$ROOT/dist/JevJarvis-trollstore.ipa"
-[ -f "$IPA" ] || die "产物中未找到 IPA，目录内容：$(ls -R "$ROOT/dist")"
+# gh run download 会把 artifact 按名字建一层子目录，IPA 在其中。
+# 这里向上找一层，兼容两种布局。
+IPA="$(find "$ROOT/dist" -name "JevJarvis-trollstore.ipa" -type f | head -1)"
+[ -n "$IPA" ] || die "产物中未找到 IPA，目录内容：$(ls -R "$ROOT/dist")"
+
+# 统一平铺到 dist/ 根目录，方便取用
+if [ "$(dirname "$IPA")" != "$ROOT/dist" ]; then
+  mv "$(dirname "$IPA")"/* "$ROOT/dist"/ 2>/dev/null || true
+  rmdir "$(dirname "$IPA")" 2>/dev/null || true
+  IPA="$ROOT/dist/JevJarvis-trollstore.ipa"
+fi
 
 echo
 log "完成 ✅"
