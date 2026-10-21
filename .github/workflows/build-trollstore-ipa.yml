@@ -47,7 +47,13 @@ jobs:
 
           # 依次尝试可用的 Xcode。README 说本工程用 Xcode 27 验证编译，
           # 但代码里没有 iOS 17+/26 专属 API（Swift 5 模式、deployment target 16.0），
-          # 所以较旧的 Xcode 16/15 也能编过。逐个回退保证成功率。
+          # 所以较旧的 Xcode 16/15 也能编过。
+          #
+          # 关键：切到某个 Xcode 之前必须先确认它装了 iOS 平台 SDK。
+          # runner 镜像上并存多个 Xcode，但只有一部分带 iOS 平台，
+          # 缺平台的那个会报 "iOS 18.x is not installed" 或
+          # actool 的 simulator runtime 错配——那不是代码问题，
+          # 继续换下一个 Xcode 只会浪费配额。
           XCODE_LIST=$(ls -1d /Applications/Xcode*.app 2>/dev/null | sort -V)
           [ -z "$XCODE_LIST" ] && XCODE_LIST="/Applications/Xcode.app"
 
@@ -56,8 +62,22 @@ jobs:
             echo "===================================================================="
             echo ">>> Trying Xcode: $XC"
             echo "===================================================================="
+
+            # 该 Xcode 是否带可用的 iOS 平台 SDK？
+            PLAT_DIRS=$(ls -1d "$XC/Contents/Developer/Platforms/iPhoneOS.platform" 2>/dev/null)
+            if [ -z "$PLAT_DIRS" ]; then
+              echo "!!! Skipped: no iPhoneOS platform bundled with this Xcode"
+              continue
+            fi
+            # SDK 版本必须与该 Xcode 匹配；用 xcodebuild -showsdks 交叉确认
+            if ! xcodebuild -showsdks 2>/dev/null | grep -q "iphoneos"; then
+              echo "!!! Skipped: no iphoneos SDK available for this Xcode"
+              continue
+            fi
+
             sudo xcode-select -s "$XC"
             xcodebuild -version
+            xcodebuild -showsdks 2>/dev/null | grep -i iphoneos || true
 
             rm -rf build
 

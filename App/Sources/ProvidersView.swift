@@ -62,8 +62,13 @@ struct ProvidersView: View {
         } header: {
             Text(jevLocalized(store.language, zh: "生成层（候选回复，必配）", en: "Generation (required for suggestions)"))
         } footer: {
-            Text(jevLocalized(store.language, zh: "必须填写你自己的 API Key；本项目不提供生成服务或中转。别用思考型模型（思考会占满额度导致 0 条候选）。地址带不带 /v1 都能拼对；端点需要额外字段关闭思考时，可在上面填写 JSON。", en: "Enter your own API key. This project does not provide a generation service or relay. Avoid reasoning models that spend the whole budget. URLs work with or without /v1; use the extra JSON field if your endpoint needs reasoning disabled."))
-            + "\n\n" + generationSectionFooter
+            // 两段说明合并成一段纯 String 再交给 Text()——
+            // Text 不是 String，不能用 + 拼。
+            Text(
+                jevLocalized(store.language, zh: "必须填写你自己的 API Key；本项目不提供生成服务或中转。别用思考型模型（思考会占满额度导致 0 条候选）。地址带不带 /v1 都能拼对；端点需要额外字段关闭思考时，可在上面填写 JSON。", en: "Enter your own API key. This project does not provide a generation service or relay. Avoid reasoning models that spend the whole budget. URLs work with or without /v1; use the extra JSON field if your endpoint needs reasoning disabled.")
+                + "\n\n"
+                + generationSectionFooter
+            )
         }
     }
 
